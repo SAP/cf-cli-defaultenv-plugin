@@ -26,7 +26,7 @@ func (c *DefaultEnvPlugin) Run(cliConnection plugin.CliConnection, args []string
 		}
 		app, err := cliConnection.GetApp(args[1])
 		handleError(err)
-		url := fmt.Sprintf("/v2/apps/%s/env", app.Guid)
+		url := fmt.Sprintf("/v3/apps/%s/env", app.Guid)
 		env, err := cliConnection.CliCommandWithoutTerminalOutput("curl", url)
 		handleError(err)
 		var envJSON map[string]interface{}
@@ -49,7 +49,7 @@ func (c *DefaultEnvPlugin) Run(cliConnection plugin.CliConnection, args []string
 		handleError(err)
 		_, err = f.Write([]byte("},"))
 		handleError(err)
-		env3, err := json.Marshal(envJSON["environment_json"])
+		env3, err := json.Marshal(envJSON["environment_variables"])
 		handleError(err)
 		str3 := strings.Trim(string(env3), "{}")
 		_, err = f.Write([]byte(str3))
@@ -68,11 +68,11 @@ func (c *DefaultEnvPlugin) GetMetadata() plugin.PluginMetadata {
 		Version: plugin.VersionType{
 			Major: 1,
 			Minor: 0,
-			Build: 0,
+			Build: 1,
 		},
 		MinCliVersion: plugin.VersionType{
-			Major: 6,
-			Minor: 7,
+			Major: 7,
+			Minor: 2,
 			Build: 0,
 		},
 		Commands: []plugin.Command{

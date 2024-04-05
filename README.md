@@ -16,7 +16,7 @@ Check whether you have a previous version installed, using the command: `cf plug
 
 ## CF Community Plugin Repository
 
-Hopefully the DefaultEnv CF CLI Plugin will soon be available on the CF Community Repository. To install the latest available version of the DefaultEnv CLI Plugin execute the following:
+The DefaultEnv CF CLI Plugin is available on the CF Community Repository. To install the latest available version of the DefaultEnv CLI Plugin execute the following:
 
 `cf install-plugin DefaultEnv`
 
@@ -52,7 +52,7 @@ The DefaultEnv CF plugin supports the following commands:
 
 | Command Name  | Command Description                                                                                 |
 | ------------- | --------------------------------------------------------------------------------------------------- |
-| `default-env` | Create default-env.json file with environment variables of an app. Usage `cf default-env myapphana` |
+| `default-env` | Create default-env.json file with environment variables of an app. Usage `cf default-env myapp-srv` |
 
 For more information, see the command help output available via `cf [command] --help` or `cf help [command]`.
 
@@ -60,7 +60,7 @@ For more information, see the command help output available via `cf [command] --
 
 Tutorials:
 
-- [SAP Cloud Platform Developer Onboarding](https://www.youtube.com/playlist?list=PLkzo92owKnVw3l4fqcLoQalyFi9K4-UdY)
+- [SAP Business Technology Platform Onboarding](https://www.youtube.com/playlist?list=PLkzo92owKnVw3l4fqcLoQalyFi9K4-UdY)
 - [SAP HANA Academy](https://www.youtube.com/saphanaacademy)
 
 # License
