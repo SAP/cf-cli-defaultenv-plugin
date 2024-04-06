@@ -9,56 +9,21 @@ import (
 	"code.cloudfoundry.org/cli/plugin"
 )
 
+// DefaultEnvPlugin allows users to export environment variables of an app into a JSON file
 type DefaultEnvPlugin struct{}
 
-func handleError(err error) {
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error:", err)
-		os.Exit(1)
-	}
-}
+var (
+	// ErrAppNotSpecified is returned when the app name is not provided by the user
+	ErrAppNotSpecified = fmt.Errorf("please specify an app")
+)
 
-func (c *DefaultEnvPlugin) Run(cliConnection plugin.CliConnection, args []string) {
-	if args[0] == "default-env" {
-		if len(args) != 2 {
-			fmt.Println("Please specify an app")
-			return
-		}
-		app, err := cliConnection.GetApp(args[1])
-		handleError(err)
-		url := fmt.Sprintf("/v3/apps/%s/env", app.Guid)
-		env, err := cliConnection.CliCommandWithoutTerminalOutput("curl", url)
-		handleError(err)
-		var envJSON map[string]interface{}
-		json.Unmarshal([]byte(strings.Join(env, "")), &envJSON)
-		f, err := os.Create("default-env.json")
-		handleError(err)
-		_, err = f.Write([]byte("{"))
-		handleError(err)
-		env1, err := json.Marshal(envJSON["system_env_json"])
-		handleError(err)
-		str1 := strings.Trim(string(env1), "{}")
-		_, err = f.Write([]byte(str1))
-		handleError(err)
-		_, err = f.Write([]byte("},"))
-		handleError(err)
-		env2, err := json.Marshal(envJSON["application_env_json"])
-		handleError(err)
-		str2 := strings.Trim(string(env2), "{}")
-		_, err = f.Write([]byte(str2))
-		handleError(err)
-		_, err = f.Write([]byte("},"))
-		handleError(err)
-		env3, err := json.Marshal(envJSON["environment_variables"])
-		handleError(err)
-		str3 := strings.Trim(string(env3), "{}")
-		_, err = f.Write([]byte(str3))
-		handleError(err)
-		_, err = f.Write([]byte("}"))
-		handleError(err)
-		err = f.Close()
-		handleError(err)
-		fmt.Println("Environment variables for " + args[1] + " written to default-env.json")
+func (*DefaultEnvPlugin) Run(cliConnection plugin.CliConnection, args []string) {
+	if args[0] != "default-env" {
+		return
+	}
+	if err := runDefaultEnv(cliConnection, args); err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, "Error:", err)
+		os.Exit(1)
 	}
 }
 
@@ -67,8 +32,8 @@ func (c *DefaultEnvPlugin) GetMetadata() plugin.PluginMetadata {
 		Name: "DefaultEnv",
 		Version: plugin.VersionType{
 			Major: 1,
-			Minor: 0,
-			Build: 1,
+			Minor: 1,
+			Build: 0,
 		},
 		MinCliVersion: plugin.VersionType{
 			Major: 7,
@@ -90,4 +55,78 @@ func (c *DefaultEnvPlugin) GetMetadata() plugin.PluginMetadata {
 
 func main() {
 	plugin.Start(new(DefaultEnvPlugin))
+}
+
+// environmentResponse from /v3/apps/:guid/env
+type environmentResponse struct {
+	SystemEnvJson        map[string]interface{} `json:"system_env_json"`
+	ApplicationEnvJson   map[string]interface{} `json:"application_env_json"`
+	EnvironmentVariables map[string]interface{} `json:"environment_variables"`
+}
+
+// Merge all environment variables into one map
+func (e environmentResponse) Merge() map[string]interface{} {
+	content := make(map[string]interface{})
+	for k, v := range e.SystemEnvJson {
+		content[k] = v
+	}
+	for k, v := range e.ApplicationEnvJson {
+		content[k] = v
+	}
+	for k, v := range e.EnvironmentVariables {
+		content[k] = v
+	}
+	return content
+}
+
+// marshalAndWrite marshals v (any) into JSON and writes it to a file
+func marshalAndWrite(v interface{}, filename string) error {
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer func(f *os.File) {
+		_ = f.Close()
+	}(f)
+
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	if _, err = f.Write(data); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// runDefaultEnv fetches and merges the environment variables of a specified CF app into a JSON file
+func runDefaultEnv(cliConnection plugin.CliConnection, args []string) error {
+	if len(args) != 2 {
+		return ErrAppNotSpecified
+	}
+
+	app, err := cliConnection.GetApp(args[1])
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("/v3/apps/%s/env", app.Guid)
+	env, err := cliConnection.CliCommandWithoutTerminalOutput("curl", url)
+	if err != nil {
+		return err
+	}
+
+	var data environmentResponse
+	if err = json.Unmarshal([]byte(strings.Join(env, "")), &data); err != nil {
+		return err
+	}
+
+	if err = marshalAndWrite(data.Merge(), "default-env.json"); err != nil {
+		return err
+	}
+
+	fmt.Println("Environment variables for " + args[1] + " written to default-env.json")
+	return nil
 }

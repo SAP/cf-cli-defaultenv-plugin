@@ -1,3 +1,6 @@
 .DS_Store
-go.sum
-DefaultEnv_plugin
+
+/.idea
+
+/DefaultEnv_plugin
+/default-env.json
