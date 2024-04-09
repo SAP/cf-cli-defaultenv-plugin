@@ -1,6 +1,6 @@
 # DefaultEnv CF CLI Plugin
 
-This is a Cloud Foundry CLI plugin designed to aid local development of [multi-target applications (MTAs)](https://www.sap.com/documents/2016/06/e2f618e4-757c-0010-82c7-eda71af511fa.html) in Cloud Foundry. The `default-env` command creates a local `default-env.json` file with the environment variables of the specified Cloud Foundry app - typically connection details for bound Cloud Foundry services such as SAP HANA HDI Containers, XSUAA (User Account and Authentication) and intra-MTA destinations defined in `mta.yaml`. Environment variables written to `default-env.json` include `VCAP_APPLICATION`, `VCAP_SERVICES` and `destinations`. The `default-env.json` file is used by [@sap/approuter](https://www.npmjs.com/package/@sap/approuter) and [@sap/hdi-deploy](https://www.npmjs.com/package/@sap/hdi-deploy) when running locally and it's also possible to use `default-env.json` from your own Node.js applications via [@sap/xsenv](https://www.npmjs.com/package/@sap/xsenv) as follows:
+This Cloud Foundry CLI plugin is designed to support local development of [multi-target applications (MTAs)](https://www.sap.com/documents/2016/06/e2f618e4-757c-0010-82c7-eda71af511fa.html) in Cloud Foundry. The `default-env` command creates a local `default-env.json` file containing the environment variables of a specified Cloud Foundry application. These variables typically include connection details for bound Cloud Foundry services such as SAP HANA HDI Containers, XSUAA (User Account and Authentication), and intra-MTA destinations defined in the `mta.yaml` file. The environment variables written to `default-env.json` include `VCAP_APPLICATION`, `VCAP_SERVICES` and `destinations`. The `default-env.json` file is used by [@sap/approuter](https://www.npmjs.com/package/@sap/approuter) and [@sap/hdi-deploy](https://www.npmjs.com/package/@sap/hdi-deploy) when running locally and it's also possible to use `default-env.json` from your own Node.js applications via [@sap/xsenv](https://www.npmjs.com/package/@sap/xsenv) as follows:
 
 ```javascript
 const xsenv = require("@sap/xsenv");
@@ -9,38 +9,35 @@ xsenv.loadEnv();
 
 # Requirements
 
-Installed CloudFoundry CLI - ensure that CloudFoundry CLI is installed and working. For more information about installation of CloudFoundry CLI, please visit the official CloudFoundry [documentation](https://docs.cloudfoundry.org/cf-cli/install-go-cli.html).
+Installed CloudFoundry CLI - Ensure that CloudFoundry CLI is installed and working. For more information on installing CloudFoundry CLI, please refer to the official CloudFoundry [documentation](https://docs.cloudfoundry.org/cf-cli/install-go-cli.html).
 
 # Download and Installation
 
-Check whether you have a previous version installed, using the command: `cf plugins`. If the DefaultEnv plugin is already installed, you need to uninstall it first and then to install the new version. You can uninstall the plugin using command `cf uninstall-plugin DefaultEnv`.
+Check if you have a previous version installed by running `cf plugins`. If the DefaultEnv plugin is already installed, you need to uninstall it first and then to install the new version. You can uninstall the plugin by running `cf uninstall-plugin DefaultEnv`.
 
 ## CF Community Plugin Repository
 
-The DefaultEnv CF CLI Plugin is available on the CF Community Repository. To install the latest available version of the DefaultEnv CLI Plugin execute the following:
-
-```console
-cf install-plugin DefaultEnv
-```
-
-If you do not have the community repository in your CF CLI you can add it first by executing:
-
-```console
-cf add-plugin-repo CF-Community https://plugins.cloudfoundry.org
-```
+This version of the DefaultEnv CF CLI plugin is not yet available in the CF community repository.
 
 ## Manual Installation
 
-Alternatively you can install any version of the plugin by manually downloading it from the releases page and installing the binaries for your specific operating system.
+You can install any version of the plugin by manually downloading it from the releases page and installing the binaries for your specific operating system.
 
-The latest version of the plugin can be downloaded from the project's [releases](https://github.com/sap/cf-cli-defaultenv-plugin/releases/latest). Download the plugin for your platform (Darwin, Linux, Windows) and install the plugin, using the following command:
+The latest version of the plugin can be downloaded from the project's [releases page](https://github.com/sap/cf-cli-defaultenv-plugin/releases/latest). Download the plugin for your platform (Darwin, Linux, Windows) and install it using the following command:
 
 ```console
 cf install-plugin <path-to-the-binary> -f
 ```
 
+or from URL:
+
+```console
+cf install-plugin https://github.com/SAP/cf-cli-defaultenv-plugin/releases/download/latest/DefaultEnv.osx
+```
+
 > [!NOTE]
-> If you are running on a Unix-based system, you need to make the plugin executable before installing it. In order to achieve this, execute the following commad
+> If you are running on a Unix-based system, you may need to make the plugin executable before installing it.
+> To do this, run:
 >
 > ```console
 > chmod +x <path-to-the-plugin>
