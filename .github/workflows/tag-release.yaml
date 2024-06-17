@@ -45,22 +45,22 @@ jobs:
         run: go get -t -v ./...
 
       - name: Build linux32 Binary
-        run: GOOS=linux GOARCH=386 go build -o DefaultEnv.linux32 DefaultEnv_plugin.go
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=386 go build -o DefaultEnv.linux32 DefaultEnv_plugin.go
 
       - name: Build linux64 Binary
-        run: GOOS=linux GOARCH=amd64 go build -o DefaultEnv.linux64 DefaultEnv_plugin.go
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o DefaultEnv.linux64 DefaultEnv_plugin.go
 
       - name: Build win32 Binary
-        run: GOOS=windows GOARCH=386 go build -o DefaultEnv.win32 DefaultEnv_plugin.go
+        run: CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -o DefaultEnv.win32 DefaultEnv_plugin.go
 
       - name: Build win64 Binary
-        run: GOOS=windows GOARCH=amd64 go build -o DefaultEnv.win64 DefaultEnv_plugin.go
+        run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o DefaultEnv.win64 DefaultEnv_plugin.go
 
       - name: Build osx Binary
-        run: GOOS=darwin GOARCH=amd64 go build -o DefaultEnv.osx DefaultEnv_plugin.go
+        run: CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o DefaultEnv.osx DefaultEnv_plugin.go
 
       - name: Build osxarm Binary
-        run: GOOS=darwin GOARCH=arm64 go build -o DefaultEnv.osxarm DefaultEnv_plugin.go
+        run: CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o DefaultEnv.osxarm DefaultEnv_plugin.go
         
       - name: Create Checksums
         id: read-shasum
