@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"code.cloudfoundry.org/cli/plugin"
+	cfClient "github.com/cloudfoundry/go-cfclient/v3/client"
+	cfClientConfig "github.com/cloudfoundry/go-cfclient/v3/config"
+	"github.com/cloudfoundry/go-cfclient/v3/resource"
 )
 
 // DefaultEnvPlugin allows users to export environment variables of an app into a JSON file
@@ -107,12 +111,28 @@ func runDefaultEnv(cliConnection plugin.CliConnection, args []string) error {
 		return ErrAppNotSpecified
 	}
 
-	app, err := cliConnection.GetApp(args[1])
+	accessToken, err := cliConnection.AccessToken()
 	if err != nil {
 		return err
 	}
 
-	url := fmt.Sprintf("/v3/apps/%s/env", app.Guid)
+	connAPIURL, err := cliConnection.ApiEndpoint()
+	if err != nil {
+		return err
+	}
+
+	cliConnection.GetApps()
+	currentSpace, err := cliConnection.GetCurrentSpace()
+	if err != nil {
+		return err
+	}
+
+	app, err := GetApp(connAPIURL, accessToken, args[1], currentSpace.Guid)
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("/v3/apps/%s/env", app.GUID)
 	env, err := cliConnection.CliCommandWithoutTerminalOutput("curl", url)
 	if err != nil {
 		return err
@@ -129,4 +149,42 @@ func runDefaultEnv(cliConnection plugin.CliConnection, args []string) error {
 
 	fmt.Println("Environment variables for " + args[1] + " written to default-env.json")
 	return nil
+}
+
+// GetApp retrieves a Cloud Foundry application resource by its name and space GUID.
+//
+// It connects to the Cloud Foundry API using the provided API endpoint and access token,
+// then searches for the application with the specified name within the given space.
+// If the application is found, it returns a pointer to the resource.App object.
+// If the application is not found or an error occurs during the process, an error is returned.
+func GetApp(connAPIEndpoint string, accessToken string, appName string, currentSpaceGUID string) (*resource.App, error) {
+	// A refresh token is not provided by the CF CLI Plugin API and is not required as
+	// "AccessToken() now provides a refreshed o-auth token.",
+	// see https://github.com/cloudfoundry/cli/blob/main/plugin/plugin_examples/CHANGELOG.md#changes-in-v614
+	refreshToken := ""
+
+	cfg, err := cfClientConfig.New(connAPIEndpoint, cfClientConfig.Token(accessToken, refreshToken))
+	if err != nil {
+		return nil, err
+	}
+	cf, err := cfClient.New(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	appFilter := &cfClient.AppListOptions{
+		Names:      cfClient.Filter{Values: []string{appName}},
+		SpaceGUIDs: cfClient.Filter{Values: []string{currentSpaceGUID}},
+	}
+	apps, err := cf.Applications.ListAll(context.Background(), appFilter)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(apps) == 0 {
+		return nil, fmt.Errorf("app '%s' not found", appName)
+	}
+
+	app := apps[0]
+	return app, nil
 }
