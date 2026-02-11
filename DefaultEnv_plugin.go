@@ -3,13 +3,15 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
-	"strings"
 
 	"code.cloudfoundry.org/cli/plugin"
-	cfClient "github.com/cloudfoundry/go-cfclient/v3/client"
-	cfClientConfig "github.com/cloudfoundry/go-cfclient/v3/config"
+	cfclient "github.com/cloudfoundry/go-cfclient/v3/client"
+	cfconfig "github.com/cloudfoundry/go-cfclient/v3/config"
 	"github.com/cloudfoundry/go-cfclient/v3/resource"
 )
 
@@ -26,7 +28,7 @@ func (*DefaultEnvPlugin) Run(cliConnection plugin.CliConnection, args []string) 
 		return
 	}
 	if err := runDefaultEnv(cliConnection, args); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "Error:", err)
+		_, _ = fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
@@ -35,9 +37,9 @@ func (c *DefaultEnvPlugin) GetMetadata() plugin.PluginMetadata {
 	return plugin.PluginMetadata{
 		Name: "DefaultEnv",
 		Version: plugin.VersionType{
-			Major: 1,
-			Minor: 1,
-			Build: 1,
+			Major: 2,
+			Minor: 0,
+			Build: 0,
 		},
 		MinCliVersion: plugin.VersionType{
 			Major: 7,
@@ -51,6 +53,11 @@ func (c *DefaultEnvPlugin) GetMetadata() plugin.PluginMetadata {
 				HelpText: "Create default-env.json file with environment variables of an app.",
 				UsageDetails: plugin.Usage{
 					Usage: "cf default-env APP",
+					Options: map[string]string{
+						"f":      "output file name (default: default-env.json)",
+						"guid":   "specify the app GUID directly instead of app name",
+						"stdout": "write output to stdout instead of a file",
+					},
 				},
 			},
 		},
@@ -61,30 +68,158 @@ func main() {
 	plugin.Start(new(DefaultEnvPlugin))
 }
 
-// environmentResponse from /v3/apps/:guid/env
-type environmentResponse struct {
-	SystemEnvJson        map[string]interface{} `json:"system_env_json"`
-	ApplicationEnvJson   map[string]interface{} `json:"application_env_json"`
-	EnvironmentVariables map[string]interface{} `json:"environment_variables"`
+// createClient creates a new CF client using the access token and API endpoint from the CLI connection
+func createClient(connection plugin.CliConnection) (*cfclient.Client, error) {
+	accessToken, err := connection.AccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve access token: %w", err)
+	}
+
+	endpoint, err := connection.ApiEndpoint()
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve API endpoint: %w", err)
+	}
+
+	cfg, err := cfconfig.New(endpoint, cfconfig.Token(accessToken, ""))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create CF client config: %w", err)
+	}
+
+	client, err := cfclient.New(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create CF client: %w", err)
+	}
+
+	return client, nil
 }
 
-// Merge all environment variables into one map
-func (e environmentResponse) Merge() map[string]interface{} {
-	content := make(map[string]interface{})
-	for k, v := range e.SystemEnvJson {
-		content[k] = v
+// findAppByName retrieves the app with the specified name in the given space
+func findAppByName(ctx context.Context, client *cfclient.Client, appName, spaceGUID string) (*resource.App, error) {
+	app, err := client.Applications.Single(ctx, &cfclient.AppListOptions{
+		Names:      cfclient.Filter{Values: []string{appName}},
+		SpaceGUIDs: cfclient.Filter{Values: []string{spaceGUID}},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve app: %w", err)
 	}
-	for k, v := range e.ApplicationEnvJson {
-		content[k] = v
+	return app, nil
+}
+
+func findEnvironmentByAppGUID(ctx context.Context, client *cfclient.Client, appGUID string) (*AppEnvironment, error) {
+	seg := url.PathEscape(appGUID)
+	p, err := url.JoinPath("/v3/apps", seg, "env")
+	if err != nil {
+		return nil, fmt.Errorf("failed to construct API path: %w", err)
 	}
-	for k, v := range e.EnvironmentVariables {
-		content[k] = v
+
+	var environment AppEnvironment
+	req, err := http.NewRequestWithContext(ctx, "GET", client.ApiURL(p), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	return content
+	resp, err := client.ExecuteAuthRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if err := json.NewDecoder(resp.Body).Decode(&environment); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &environment, nil
+}
+
+// runDefaultEnv fetches and merges the environment variables of a specified CF app into a JSON file
+func runDefaultEnv(cliConnection plugin.CliConnection, args []string) error {
+	fs := flag.NewFlagSet("cf-defaultenv-plugin", flag.ExitOnError)
+	outFileFlag := fs.String("f", "default-env.json", "output file name")
+	appGUIDFlag := fs.String("guid", "", "specify the app GUID directly instead of app name")
+	writeStdoutFlag := fs.Bool("stdout", false, "write output to stdout instead of a file")
+	if err := fs.Parse(args[1:]); err != nil {
+		return fmt.Errorf("failed to parse flags: %w", err)
+	}
+
+	ctx := context.Background()
+
+	client, err := createClient(cliConnection)
+	if err != nil {
+		return err
+	}
+
+	currentSpace, err := cliConnection.GetCurrentSpace()
+	if err != nil {
+		return fmt.Errorf("failed to retrieve current space: %w", err)
+	}
+
+	var appGUID string
+	if *appGUIDFlag != "" {
+		// if the user specified the app GUID directly, use it instead of looking up the app by name
+		appGUID = *appGUIDFlag
+
+		_, _ = fmt.Fprintln(os.Stderr, "info: using provided app GUID", appGUID)
+	} else {
+		appName := fs.Arg(0)
+		if appName == "" {
+			_, _ = fmt.Fprintln(os.Stderr, "error: app name or -guid flag must be specified")
+			fs.Usage()
+			return nil
+		}
+
+		app, err := findAppByName(ctx, client, appName, currentSpace.Guid)
+		if err != nil {
+			return err
+		}
+		appGUID = app.GUID
+
+		_, _ = fmt.Fprintln(os.Stderr, "info: retrieved app", appName, "with GUID", appGUID)
+	}
+
+	env, err := findEnvironmentByAppGUID(ctx, client, appGUID)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve app environment: %w", err)
+	}
+
+	result := Merge(env.SystemEnvVars, env.AppEnvVars, env.EnvVars)
+
+	if *writeStdoutFlag {
+		if err := marshalAndWriteStdout(result); err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintln(os.Stderr, "success: environment variables written to stdout")
+	} else {
+		if err := marshalAndWrite(result, *outFileFlag); err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintln(os.Stderr, "success: environment variables written to", *outFileFlag)
+	}
+	return nil
+}
+
+// AppEnvironment is a stripped down version of [cfclient.Environment]
+// that only contains the fields we care about for this plugin with a slightly different structure to make it easier
+// to merge into a single map.
+type AppEnvironment struct {
+	EnvVars       map[string]any `json:"environment_variables,omitempty"`
+	SystemEnvVars map[string]any `json:"system_env_json,omitempty"`      // VCAP_SERVICES
+	AppEnvVars    map[string]any `json:"application_env_json,omitempty"` // VCAP_APPLICATION
+}
+
+// Merge merges multiple maps into a single map
+func Merge[Map ~map[K]V, K comparable, V any](maps ...Map) Map {
+	result := make(Map)
+	for _, m := range maps {
+		for k, v := range m {
+			result[k] = v
+		}
+	}
+	return result
 }
 
 // marshalAndWrite marshals v (any) into JSON and writes it to a file
-func marshalAndWrite(v interface{}, filename string) error {
+func marshalAndWrite(v any, filename string) error {
 	f, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -92,99 +227,14 @@ func marshalAndWrite(v interface{}, filename string) error {
 	defer func(f *os.File) {
 		_ = f.Close()
 	}(f)
-
-	data, err := json.Marshal(v)
-	if err != nil {
+	if err := json.NewEncoder(f).Encode(v); err != nil {
 		return err
 	}
-
-	if _, err = f.Write(data); err != nil {
-		return err
-	}
-
 	return nil
 }
 
-// runDefaultEnv fetches and merges the environment variables of a specified CF app into a JSON file
-func runDefaultEnv(cliConnection plugin.CliConnection, args []string) error {
-	if len(args) != 2 {
-		return ErrAppNotSpecified
-	}
-
-	accessToken, err := cliConnection.AccessToken()
-	if err != nil {
-		return err
-	}
-
-	connAPIURL, err := cliConnection.ApiEndpoint()
-	if err != nil {
-		return err
-	}
-
-	cliConnection.GetApps()
-	currentSpace, err := cliConnection.GetCurrentSpace()
-	if err != nil {
-		return err
-	}
-
-	app, err := GetApp(connAPIURL, accessToken, args[1], currentSpace.Guid)
-	if err != nil {
-		return err
-	}
-
-	url := fmt.Sprintf("/v3/apps/%s/env", app.GUID)
-	env, err := cliConnection.CliCommandWithoutTerminalOutput("curl", url)
-	if err != nil {
-		return err
-	}
-
-	var data environmentResponse
-	if err = json.Unmarshal([]byte(strings.Join(env, "")), &data); err != nil {
-		return err
-	}
-
-	if err = marshalAndWrite(data.Merge(), "default-env.json"); err != nil {
-		return err
-	}
-
-	fmt.Println("Environment variables for " + args[1] + " written to default-env.json")
-	return nil
-}
-
-// GetApp retrieves a Cloud Foundry application resource by its name and space GUID.
-//
-// It connects to the Cloud Foundry API using the provided API endpoint and access token,
-// then searches for the application with the specified name within the given space.
-// If the application is found, it returns a pointer to the resource.App object.
-// If the application is not found or an error occurs during the process, an error is returned.
-func GetApp(connAPIEndpoint string, accessToken string, appName string, currentSpaceGUID string) (*resource.App, error) {
-	// A refresh token is not provided by the CF CLI Plugin API and is not required as
-	// "AccessToken() now provides a refreshed o-auth token.",
-	// see https://github.com/cloudfoundry/cli/blob/main/plugin/plugin_examples/CHANGELOG.md#changes-in-v614
-	refreshToken := ""
-
-	cfg, err := cfClientConfig.New(connAPIEndpoint, cfClientConfig.Token(accessToken, refreshToken))
-	if err != nil {
-		return nil, err
-	}
-	cf, err := cfClient.New(cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	appFilter := &cfClient.AppListOptions{
-		Names:      cfClient.Filter{Values: []string{appName}},
-		SpaceGUIDs: cfClient.Filter{Values: []string{currentSpaceGUID}},
-	}
-	apps, err := cf.Applications.ListAll(context.Background(), appFilter)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(apps) == 0 {
-		return nil, fmt.Errorf("app '%s' not found", appName)
-	}
-
-	app := apps[0]
-	return app, nil
+func marshalAndWriteStdout(v any) error {
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(v)
 }
