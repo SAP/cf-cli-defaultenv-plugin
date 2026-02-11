@@ -1,6 +1,6 @@
 module github.com/saphanaacademy/DefaultEnv
 
-go 1.25.5
+go 1.25
 
 require (
 	code.cloudfoundry.org/cli v7.1.0+incompatible
