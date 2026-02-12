@@ -18,11 +18,6 @@ import (
 // DefaultEnvPlugin allows users to export environment variables of an app into a JSON file
 type DefaultEnvPlugin struct{}
 
-var (
-	// ErrAppNotSpecified is returned when the app name is not provided by the user
-	ErrAppNotSpecified = fmt.Errorf("please specify an app")
-)
-
 func (*DefaultEnvPlugin) Run(cliConnection plugin.CliConnection, args []string) {
 	if args[0] != "default-env" {
 		return
@@ -105,6 +100,7 @@ func findAppByName(ctx context.Context, client *cfclient.Client, appName, spaceG
 	return app, nil
 }
 
+// findEnvironmentByAppGUID retrieves the environment variables of the app with the specified GUID
 func findEnvironmentByAppGUID(ctx context.Context, client *cfclient.Client, appGUID string) (*AppEnvironment, error) {
 	seg := url.PathEscape(appGUID)
 	p, err := url.JoinPath("/v3/apps", seg, "env")
@@ -218,7 +214,7 @@ func Merge[Map ~map[K]V, K comparable, V any](maps ...Map) Map {
 	return result
 }
 
-// marshalAndWrite marshals v (any) into JSON and writes it to a file
+// marshalAndWrite marshals [v] into JSON and writes it to a file
 func marshalAndWrite(v any, filename string) error {
 	f, err := os.Create(filename)
 	if err != nil {
@@ -233,6 +229,7 @@ func marshalAndWrite(v any, filename string) error {
 	return nil
 }
 
+// marshalAndWriteStdout [v] into JSON and writes it to stdout
 func marshalAndWriteStdout(v any) error {
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
