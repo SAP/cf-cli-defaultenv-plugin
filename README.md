@@ -31,9 +31,15 @@ cf install-plugin <path-to-the-binary> -f
 
 or from URL:
 
-```console
-cf install-plugin https://github.com/SAP/cf-cli-defaultenv-plugin/releases/download/latest/DefaultEnv.osx
-```
+- (macOS):
+  ```console
+  cf install-plugin https://github.com/SAP/cf-cli-defaultenv-plugin/releases/latest/download/DefaultEnv.osx
+  ```
+
+- (Linux):
+  ```console
+  cf install-plugin https://github.com/SAP/cf-cli-defaultenv-plugin/releases/latest/download/DefaultEnv.linux64
+  ```
 
 > [!NOTE]
 > If you are running on a Unix-based system, you may need to make the plugin executable before installing it.
